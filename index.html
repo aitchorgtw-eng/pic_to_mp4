@@ -4,21 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 照片轉影片工具 - 資訊設計師修復版</title>
-    <!-- 1. 環境隔離腳本必須最先載入 -->
     <script src="coi-serviceworker.js"></script>
-    
-    <!-- 2. 外部庫引用 (增加備援與載入順序優化) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <!-- FFmpeg 資源 -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js"></script>
     <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
     
     <style>
-        [v-cloak] { display: none; } /* 防止 Vue 未載入前顯示原始標籤 */
+        /* 暫時移除 v-cloak 以便排錯，若成功載入 Vue 會接管渲染 */
+        #app { min-height: 100vh; }
     </style>
 </head>
 <body class="bg-gray-100 p-4 md:p-8">
-    <div id="app" v-cloak class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-lg">
+    <div id="app" class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-lg">
         <h1 class="text-2xl font-bold mb-6 text-gray-800 flex items-center">
             <span class="mr-2">📸</span> 照片轉影片工具
         </h1>
@@ -27,7 +26,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="border-2 border-dashed border-blue-300 p-4 rounded text-center bg-blue-50">
                 <label class="block mb-2 font-medium">1. 上傳照片 (5-20張)</label>
-                <input type="file" multiple accept="image/*" @change="handleImageUpload" class="text-sm w-full cursor-pointer">
+                <input type="file" id="imgInput" multiple accept="image/*" @change="handleImageUpload" class="text-sm w-full cursor-pointer">
             </div>
             <div class="border-2 border-dashed border-green-300 p-4 rounded text-center bg-green-50">
                 <label class="block mb-2 font-medium">2. 背景音樂 (MP3/MP4)</label>
@@ -35,20 +34,19 @@
             </div>
         </div>
 
-        <!-- 2. 圖片排序清單 -->
-        <div v-if="images.length > 0" class="space-y-2 mb-6">
-            <h3 class="font-bold border-b pb-2 text-gray-700">圖片順序調整 ({{images.length}}/20)</h3>
-            <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-gray-50 p-2 rounded border hover:border-blue-300 transition">
-                <span class="w-8 font-mono text-gray-400 text-center">{{index + 1}}</span>
-                <img :src="img.preview" class="w-16 h-16 object-cover rounded mx-4 border bg-white">
+        <!-- 2. 圖片排序清單 (當有圖片時顯示) -->
+        <div v-if="images && images.length > 0" class="space-y-2 mb-6 border-t pt-4">
+            <h3 class="font-bold pb-2 text-gray-700 text-sm uppercase">圖片順序調整 ({{images.length}}/20)</h3>
+            <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-gray-50 p-2 rounded border border-gray-200">
+                <span class="w-8 font-mono text-gray-400 text-center text-xs">{{index + 1}}</span>
+                <img :src="img.preview" class="w-16 h-16 object-cover rounded mx-4 border bg-white shadow-sm">
                 <div class="flex-grow">
-                    <label class="text-xs text-gray-400 block uppercase font-bold">播放秒數</label>
-                    <input type="number" v-model.number="img.duration" min="2" max="5" class="w-16 border rounded px-1 text-sm">
+                    <input type="number" v-model.number="img.duration" min="2" max="5" class="w-16 border rounded px-1 text-sm py-1"> <span class="text-xs text-gray-500 ml-1">秒</span>
                 </div>
                 <div class="flex space-x-1">
-                    <button @click="move(index, -1)" :disabled="index === 0" class="px-2 py-1 bg-white border rounded disabled:opacity-20 hover:bg-gray-100">↑</button>
-                    <button @click="move(index, 1)" :disabled="index === images.length - 1" class="px-2 py-1 bg-white border rounded disabled:opacity-20 hover:bg-gray-100">↓</button>
-                    <button @click="remove(index)" class="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded hover:bg-red-100 ml-2">✕</button>
+                    <button @click="move(index, -1)" :disabled="index === 0" class="p-2 bg-white border rounded disabled:opacity-20 hover:bg-gray-50 text-xs">↑</button>
+                    <button @click="move(index, 1)" :disabled="index === images.length - 1" class="p-2 bg-white border rounded disabled:opacity-20 hover:bg-gray-50 text-xs">↓</button>
+                    <button @click="remove(index)" class="p-2 bg-red-50 text-red-600 border border-red-100 rounded hover:bg-red-100 text-xs">✕</button>
                 </div>
             </div>
         </div>
@@ -61,124 +59,127 @@
                 class="w-full py-4 rounded-lg font-bold text-white transition shadow-lg text-lg"
                 :class="isProcessing ? 'bg-gray-400 animate-pulse' : (images.length < 5 ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700')"
             >
-                {{ isProcessing ? `🎬 正在合成影片... ${progress}%` : (images.length < 5 ? '請上傳至少 5 張照片' : '🚀 開始合成影片') }}
+                {{ isProcessing ? `🎬 合成中... ${progress}%` : (images.length < 5 ? '請至少選擇 5 張照片' : '🚀 開始合成影片') }}
             </button>
         </div>
 
-        <!-- 進度條 -->
-        <div v-if="isProcessing" class="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-            <div class="bg-gradient-to-r from-blue-500 to-blue-700 h-full transition-all duration-300" :style="{ width: progress + '%' }"></div>
+        <div v-if="isProcessing" class="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div class="bg-blue-600 h-full" :style="{ width: progress + '%' }"></div>
         </div>
     </div>
 
     <script>
-        const { createApp, ref } = Vue;
-        const { FFmpeg } = ffmpeg;
-        const { fetchFile, toBlobURL } = FFmpegUtil;
+        // 增加容錯：如果全域變數載入失敗，給予提示
+        window.addEventListener('error', function(e) {
+            console.error("腳本載入或執行錯誤:", e.message);
+        });
 
-        createApp({
-            setup() {
-                const images = ref([]);
-                const musicFile = ref(null);
-                const isProcessing = ref(false);
-                const progress = ref(0);
+        try {
+            const { createApp, ref } = Vue;
+            // 修正 FFmpegUtil 引用路徑
+            const FFUtils = window.FFmpegUtil || {};
+            const { FFmpeg } = window.FFmpegWasm || window.FFmpeg || {};
+            
+            const app = createApp({
+                setup() {
+                    const images = ref([]);
+                    const musicFile = ref(null);
+                    const isProcessing = ref(false);
+                    const progress = ref(0);
 
-                const handleImageUpload = (e) => {
-                    const files = Array.from(e.target.files);
-                    if (images.value.length + files.length > 20) {
-                        alert("最多只能上傳 20 張照片");
-                        return;
-                    }
-                    files.forEach(file => {
-                        images.value.push({
-                            id: Math.random().toString(36).substr(2, 9),
-                            file: file,
-                            preview: URL.createObjectURL(file),
-                            duration: 3
-                        });
-                    });
-                    e.target.value = ''; // 重置 input
-                };
-
-                const handleMusicUpload = (e) => { musicFile.value = e.target.files[0]; };
-
-                const move = (index, delta) => {
-                    const newIndex = index + delta;
-                    if (newIndex < 0 || newIndex >= images.value.length) return;
-                    const item = images.value.splice(index, 1)[0];
-                    images.value.splice(newIndex, 0, item);
-                };
-
-                const remove = (index) => {
-                    URL.revokeObjectURL(images.value[index].preview);
-                    images.value.splice(index, 1);
-                };
-
-                const startProcess = async () => {
-                    if (isProcessing.value) return;
-                    isProcessing.value = true;
-                    progress.value = 0;
-
-                    try {
-                        const ffmpegInstance = new FFmpeg();
-                        ffmpegInstance.on('progress', ({ progress: p }) => {
-                            progress.value = Math.round(p * 100);
-                        });
-
-                        // 載入核心元件
-                        await ffmpegInstance.load({
-                            coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
-                            wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
-                        });
-
-                        // 1. 寫入圖片
-                        for (let i = 0; i < images.value.length; i++) {
-                            await ffmpegInstance.writeFile(`img${i}.jpg`, await fetchFile(images.value[i].file));
+                    const handleImageUpload = (e) => {
+                        const files = Array.from(e.target.files);
+                        if (images.value.length + files.length > 20) {
+                            alert("最多 20 張照片");
+                            return;
                         }
+                        files.forEach(file => {
+                            images.value.push({
+                                id: Math.random().toString(36).substring(7),
+                                file: file,
+                                preview: URL.createObjectURL(file),
+                                duration: 3
+                            });
+                        });
+                        e.target.value = '';
+                    };
 
-                        // 2. 寫入背景音樂
-                        let audioInput = [];
-                        if (musicFile.value) {
-                            await ffmpegInstance.writeFile('bgm_input', await fetchFile(musicFile.value));
-                            audioInput = ['-i', 'bgm_input'];
+                    const handleMusicUpload = (e) => { musicFile.value = e.target.files[0]; };
+
+                    const move = (index, delta) => {
+                        const newIndex = index + delta;
+                        if (newIndex < 0 || newIndex >= images.value.length) return;
+                        const item = images.value.splice(index, 1)[0];
+                        images.value.splice(newIndex, 0, item);
+                    };
+
+                    const remove = (index) => {
+                        URL.revokeObjectURL(images.value[index].preview);
+                        images.value.splice(index, 1);
+                    };
+
+                    const startProcess = async () => {
+                        if (isProcessing.value) return;
+                        isProcessing.value = true;
+                        progress.value = 0;
+
+                        try {
+                            const ffmpeg = new FFmpeg();
+                            ffmpeg.on('progress', ({ progress: p }) => {
+                                progress.value = Math.round(p * 100);
+                            });
+
+                            // 這裡需確保 fetchFile 正確調用
+                            const fFile = FFUtils.fetchFile || window.fetchFile;
+
+                            await ffmpeg.load({
+                                coreURL: await FFUtils.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
+                                wasmURL: await FFUtils.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+                            });
+
+                            for (let i = 0; i < images.value.length; i++) {
+                                await ffmpeg.writeFile(`img${i}.jpg`, await fFile(images.value[i].file));
+                            }
+
+                            if (musicFile.value) {
+                                await ffmpeg.writeFile('bgm', await fFile(musicFile.value));
+                            }
+
+                            const totalDuration = images.value.reduce((acc, cur) => acc + cur.duration, 0);
+                            const fadeStart = Math.max(0, totalDuration - 3);
+
+                            await ffmpeg.exec([
+                                '-framerate', '1/3',
+                                '-i', 'img%d.jpg',
+                                '-i', 'bgm',
+                                '-filter_complex', `[1:a]afade=t=out:st=${fadeStart}:d=3[aout]`,
+                                '-map', '0:v', '-map', '[aout]',
+                                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', 'output.mp4'
+                            ]);
+
+                            const data = await ffmpeg.readFile('output.mp4');
+                            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'video.mp4';
+                            a.click();
+                        } catch (err) {
+                            console.error(err);
+                            alert("合成出錯: " + err.message);
+                        } finally {
+                            isProcessing.value = false;
                         }
+                    };
 
-                        // 3. 計算時長
-                        const totalSec = images.value.reduce((acc, cur) => acc + cur.duration, 0);
-                        const fadeStart = Math.max(0, totalSec - 3);
-
-                        // 4. 合成指令 (動態生成)
-                        // 注意：此處使用基礎序列法確保 100% 執行成功
-                        const args = [
-                            '-framerate', '1/3',
-                            '-i', 'img%d.jpg',
-                            ...audioInput,
-                            '-filter_complex', `[1:a]afade=t=out:st=${fadeStart}:d=3[aout]`,
-                            '-map', '0:v', '-map', '[aout]',
-                            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-shortest', 'output.mp4'
-                        ];
-
-                        await ffmpegInstance.exec(args);
-                        
-                        // 5. 匯出
-                        const data = await ffmpegInstance.readFile('output.mp4');
-                        const downloadUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-                        const link = document.createElement('a');
-                        link.href = downloadUrl;
-                        link.download = `video_${Date.now()}.mp4`;
-                        link.click();
-                        
-                    } catch (error) {
-                        console.error("FFmpeg Error:", error);
-                        alert("合成發生錯誤，請檢查主控台訊息。");
-                    } finally {
-                        isProcessing.value = false;
-                    }
-                };
-
-                return { images, musicFile, handleImageUpload, handleMusicUpload, move, remove, startProcess, isProcessing, progress };
-            }
-        }).mount('#app');
+                    return { images, musicFile, handleImageUpload, handleMusicUpload, move, remove, startProcess, isProcessing, progress };
+                }
+            });
+            
+            app.mount('#app');
+            console.log("Vue 應用程式已掛載成功。");
+        } catch (err) {
+            document.body.innerHTML = `<div style="padding:20px; color:red;">系統載入失敗: ${err.message}<br>請檢查主控台 Console 以獲得更多資訊。</div>`;
+        }
     </script>
 </body>
 </html>
