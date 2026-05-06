@@ -3,44 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 照片轉影片測試 - 資訊設計師</title>
-    <!-- 1. 必須在最前面載入 Service Worker 腳本 -->
+    <title>環境修復 - 資訊設計師</title>
     <script src="coi-serviceworker.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        #status { font-weight: bold; padding: 10px; border-radius: 5px; background: #eee; display: inline-block; }
+        body { font-family: sans-serif; padding: 20px; }
+        #status { font-weight: bold; padding: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h1>FFmpeg 環境檢查</h1>
+    <h1>FFmpeg 環境檢查 (修復版)</h1>
     <p>狀態：<span id="status">檢查中...</span></p>
 
-    <!-- 2. 將邏輯正確包裹在 script 標籤內 -->
     <script>
-        window.onload = function() {
+        async function checkEnvironment() {
             const status = document.getElementById('status');
             
-            // 檢查是否已開啟跨來源隔離 (這影響 SharedArrayBuffer 的可用性)
+            // 等待 Service Worker 準備就緒
+            if ('serviceWorker' in navigator) {
+                const registration = await navigator.serviceWorker.ready;
+                console.log("Service Worker 已就緒:", registration);
+            }
+
             if (typeof SharedArrayBuffer !== 'undefined') {
-                status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
+                status.innerHTML = "✅ 跨來源隔離已開啟！環境已就緒。";
                 status.style.color = "green";
                 status.style.backgroundColor = "#eaffea";
-                console.log("Success: SharedArrayBuffer is available.");
             } else {
-                // 如果環境尚未隔離且支援 SW，嘗試自動重整
-                if (window.crossOriginIsolated === false && 'serviceWorker' in navigator) {
-                    status.innerHTML = "⏳ 正在激活隔離環境，1秒後自動重新整理...";
-                    status.style.color = "#856404";
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1000);
-                } else {
-                    status.innerHTML = "❌ 隔離失敗。請確保使用 HTTPS 並手動重新整理 (Ctrl+F5)。";
-                    status.style.color = "red";
-                    status.style.backgroundColor = "#ffeaea";
+                if (window.crossOriginIsolated === false) {
+                    // 檢查是否已經嘗試過重整 (透過 URL 參數)
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (!urlParams.has('reloaded')) {
+                        status.innerHTML = "⏳ 正在激活隔離環境，請稍候...";
+                        setTimeout(() => {
+                            window.location.search = "reloaded=true";
+                        }, 2000);
+                    } else {
+                        status.innerHTML = "❌ 自動激活失敗。請「徹底關閉瀏覽器」後重新開啟此頁面，或檢查是否使用無痕模式 (無痕模式有時會停用 SW)。";
+                        status.style.color = "red";
+                    }
                 }
             }
-        };
+        }
+        window.onload = checkEnvironment;
     </script>
 </body>
 </html>
