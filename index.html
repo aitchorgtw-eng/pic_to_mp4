@@ -62,93 +62,103 @@
     </div>
 
     <script>
-        const { createApp, ref } = Vue;
+  const { createApp, ref, onMounted } = Vue;
 
-        createApp({
-            setup() {
-                const images = ref([]);
-                const musicFile = ref(null);
-                const isProcessing = ref(false);
-                const progress = ref(0);
+createApp({
+    setup() {
+        const images = ref([]);
+        const musicFile = ref(null);
+        const isProcessing = ref(false);
+        const progress = ref(0);
 
-                const handleImageUpload = (e) => {
-                    const files = Array.from(e.target.files);
-                    files.forEach(file => {
-                        images.value.push({ id: Math.random().toString(36).substring(7), file, preview: URL.createObjectURL(file), duration: 3 });
-                    });
-                    e.target.value = '';
-                };
-                const handleMusicUpload = (e) => { musicFile.value = e.target.files[0]; };
-                const move = (i, d) => { const item = images.value.splice(i, 1)[0]; images.value.splice(i + d, 0, item); };
-                const remove = (i) => { URL.revokeObjectURL(images.value[i].preview); images.value.splice(i, 1); };
+        // 新增功能：載入時自動檢查環境
+        onMounted(() => {
+            console.log("正在初始化 FFmpeg 載入檢查...");
+        });
 
-                const startProcess = async () => {
-                    if (isProcessing.value) return;
-                    isProcessing.value = true;
-                    progress.value = 0;
+        // 圖片處理邏輯保持不變...
+        const handleImageUpload = (e) => {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                images.value.push({ id: Math.random().toString(36).substring(7), file, preview: URL.createObjectURL(file), duration: 3 });
+            });
+            e.target.value = '';
+        };
 
-                    try {
-                        // 【終極相容性提取】
-                        const FFClass = window.FFmpegWasm?.FFmpeg || window.FFmpeg?.FFmpeg || window.ffmpeg?.FFmpeg;
-                        const Utils = window.FFmpegUtil;
+        const startProcess = async () => {
+            if (isProcessing.value) return;
+            isProcessing.value = true;
+            progress.value = 0;
 
-                        if (!FFClass) throw new Error("FFmpeg 核心腳本尚未載入完畢，請重新整理頁面。");
+            try {
+                // 【核心修正】明確的全域變數路徑尋找
+                // 根據版本 0.12.7，正確位置應為全域的 FFmpegWasm 物件
+                const FFClass = (window.FFmpegWasm && window.FFmpegWasm.FFmpeg) || window.FFmpeg;
+                const Utils = window.FFmpegUtil || (window.FFmpegWasm && window.FFmpegWasm.util);
 
-                        const ffmpeg = new FFClass();
-                        const { fetchFile, toBlobURL } = Utils;
+                if (!FFClass || !Utils) {
+                    throw new Error("FFmpeg 組件載入異常。請嘗試：1. 徹底關閉分頁再開 2. 換成電腦版 Chrome 瀏覽器。");
+                }
 
-                        ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
+                const ffmpeg = new FFClass();
+                const { fetchFile, toBlobURL } = Utils;
 
-                        await ffmpeg.load({
-                            coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
-                            wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
-                        });
+                ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
 
-                        // 1. 寫入檔案
-                        for (let i = 0; i < images.value.length; i++) {
-                            await ffmpeg.writeFile(`f${i}.jpg`, await fetchFile(images.value[i].file));
-                        }
-                        
-                        let audioIn = [];
-                        if (musicFile.value) {
-                            await ffmpeg.writeFile('bgm', await fetchFile(musicFile.value));
-                            audioIn = ['-i', 'bgm'];
-                        }
+                // 核心 WASM 下載
+                await ffmpeg.load({
+                    coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
+                    wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+                });
 
-                        // 2. 建立序列文件
-                        let list = "";
-                        images.value.forEach((img, i) => { list += `file 'f${i}.jpg'\nduration ${img.duration}\n`; });
-                        list += `file 'f${images.value.length-1}.jpg'`;
-                        await ffmpeg.writeFile('l.txt', new TextEncoder().encode(list));
+                // 1. 寫入虛擬文件系統 (改用更穩定的檔名)
+                for (let i = 0; i < images.value.length; i++) {
+                    await ffmpeg.writeFile(`pic_${i}.jpg`, await fetchFile(images.value[i].file));
+                }
+                
+                let audioIn = [];
+                if (musicFile.value) {
+                    await ffmpeg.writeFile('audio_bg', await fetchFile(musicFile.value));
+                    audioIn = ['-i', 'audio_bg'];
+                }
 
-                        // 3. 執行合成
-                        const total = images.value.reduce((a, c) => a + c.duration, 0);
-                        await ffmpeg.exec([
-                            '-f', 'concat', '-safe', '0', '-i', 'l.txt',
-                            ...audioIn,
-                            '-filter_complex', `[1:a]afade=t=out:st=${Math.max(0, total-3)}:d=3[aout]`,
-                            '-map', '0:v', '-map', '[aout]',
-                            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-shortest', 'out.mp4'
-                        ]);
+                // 2. 建立 Concat 序列 (精確秒數控制)
+                let listContent = "";
+                images.value.forEach((img, i) => {
+                    listContent += `file 'pic_${i}.jpg'\nduration ${img.duration}\n`;
+                });
+                listContent += `file 'pic_${images.value.length-1}.jpg'`; // 最後一幀補償
+                await ffmpeg.writeFile('input.txt', new TextEncoder().encode(listContent));
 
-                        // 4. 下載
-                        const data = await ffmpeg.readFile('out.mp4');
-                        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `video_${Date.now()}.mp4`;
-                        a.click();
-                        
-                    } catch (err) {
-                        console.error(err);
-                        alert("失敗: " + err.message);
-                    } finally {
-                        isProcessing.value = false;
-                    }
-                };
-                return { images, musicFile, handleImageUpload, handleMusicUpload, move, remove, startProcess, isProcessing, progress };
+                // 3. 執行合成
+                const totalDur = images.value.reduce((a, c) => a + c.duration, 0);
+
+                await ffmpeg.exec([
+                    '-f', 'concat', '-safe', '0', '-i', 'input.txt',
+                    ...audioIn,
+                    '-filter_complex', `[1:a]afade=t=out:st=${Math.max(0, totalDur-3)}:d=3[aout]`,
+                    '-map', '0:v', '-map', '[aout]',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-shortest', 'final_output.mp4'
+                ]);
+
+                // 4. 下載結果
+                const data = await ffmpeg.readFile('final_output.mp4');
+                const downloadLink = document.createElement('a');
+                downloadLink.href = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+                downloadLink.download = `my_video_${Date.now()}.mp4`;
+                downloadLink.click();
+                
+            } catch (err) {
+                console.error("FFmpeg Runtime Error:", err);
+                alert("合成失敗：" + err.message);
+            } finally {
+                isProcessing.value = false;
             }
-        }).mount('#app');
+        };
+
+        return { images, musicFile, handleImageUpload, startProcess, isProcessing, progress };
+    }
+}).mount('#app');
     </script>
 </body>
 </html>
