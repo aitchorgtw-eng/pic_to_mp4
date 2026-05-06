@@ -4,47 +4,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>環境修復 - 資訊設計師</title>
-    <script src="coi-serviceworker.js"></script>
+    <!-- 1. 移除 head 裡的 script 標籤，改到 body 結尾處理以確保 DOM 已就緒 -->
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        #status { font-weight: bold; padding: 10px; border-radius: 5px; }
+        body { font-family: sans-serif; padding: 20px; line-height: 1.5; }
+        #status { font-weight: bold; padding: 12px; border-radius: 8px; background: #f0f0f0; display: inline-block; min-width: 200px; }
+        .log { margin-top: 20px; font-size: 12px; color: #666; font-family: monospace; }
     </style>
 </head>
 <body>
-    <h1>FFmpeg 環境檢查 (修復版)</h1>
-    <p>狀態：<span id="status">檢查中...</span></p>
+    <h1>FFmpeg 環境檢查 (穩定版)</h1>
+    <p>狀態：<span id="status">正在啟動偵測...</span></p>
+    <div id="debug-log" class="log"></div>
 
     <script>
-        async function checkEnvironment() {
-            const status = document.getElementById('status');
+        const status = document.getElementById('status');
+        const logBox = document.getElementById('debug-log');
+
+        function log(msg) {
+            logBox.innerHTML += `> ${msg}<br>`;
+            console.log(msg);
+        }
+
+        async function init() {
+            log("初始化檢查...");
             
-            // 等待 Service Worker 準備就緒
-            if ('serviceWorker' in navigator) {
-                const registration = await navigator.serviceWorker.ready;
-                console.log("Service Worker 已就緒:", registration);
+            // 檢查是否已經具備隔離環境
+            if (typeof SharedArrayBuffer !== 'undefined') {
+                status.innerHTML = "✅ 跨來源隔離已開啟！環境就緒。";
+                status.style.backgroundColor = "#eaffea";
+                status.style.color = "green";
+                log("成功：SharedArrayBuffer 可用。");
+                return;
             }
 
-            if (typeof SharedArrayBuffer !== 'undefined') {
-                status.innerHTML = "✅ 跨來源隔離已開啟！環境已就緒。";
-                status.style.color = "green";
-                status.style.backgroundColor = "#eaffea";
-            } else {
-                if (window.crossOriginIsolated === false) {
-                    // 檢查是否已經嘗試過重整 (透過 URL 參數)
+            if ('serviceWorker' in navigator) {
+                try {
+                    log("正在註冊 Service Worker...");
+                    // 明確指定 scope 為當前目錄，解決 GitHub Pages 路徑問題
+                    const reg = await navigator.serviceWorker.register('coi-serviceworker.js', { scope: './' });
+                    log("註冊成功。狀態: " + (reg.installing ? "安裝中" : reg.waiting ? "等待中" : "已啟用"));
+
+                    // 檢查是否已經嘗試過重整
                     const urlParams = new URLSearchParams(window.location.search);
-                    if (!urlParams.has('reloaded')) {
-                        status.innerHTML = "⏳ 正在激活隔離環境，請稍候...";
+                    if (!urlParams.has('v')) {
+                        status.innerHTML = "⏳ 正在啟用隔離協議，請稍候...";
                         setTimeout(() => {
-                            window.location.search = "reloaded=true";
-                        }, 2000);
+                            // 使用版本號參數強制重新載入，避免快取
+                            window.location.search = "v=" + Date.now();
+                        }, 1500);
                     } else {
-                        status.innerHTML = "❌ 自動激活失敗。請「徹底關閉瀏覽器」後重新開啟此頁面，或檢查是否使用無痕模式 (無痕模式有時會停用 SW)。";
+                        status.innerHTML = "❌ 環境啟動失敗。請嘗試：<br>1. 徹底關閉分頁並重新開啟<br>2. 檢查是否非無痕模式";
+                        status.style.backgroundColor = "#ffeaea";
                         status.style.color = "red";
                     }
+                } catch (err) {
+                    log("錯誤: " + err.message);
+                    status.innerHTML = "❌ 腳本載入錯誤。";
                 }
+            } else {
+                status.innerHTML = "❌ 您的瀏覽器不支援 Service Workers。";
             }
         }
-        window.onload = checkEnvironment;
+
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
