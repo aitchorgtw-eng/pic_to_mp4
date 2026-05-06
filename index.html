@@ -4,31 +4,43 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 照片轉影片測試 - 資訊設計師</title>
-    <!-- 必須在其他所有腳本之前載入 -->
+    <!-- 1. 必須在最前面載入 Service Worker 腳本 -->
     <script src="coi-serviceworker.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        #status { font-weight: bold; padding: 10px; border-radius: 5px; background: #eee; display: inline-block; }
+    </style>
 </head>
 <body>
-    <h1>FFmpeg 環境環境檢查</h1>
-    <div id="status">檢查中...</div>
+    <h1>FFmpeg 環境檢查</h1>
+    <p>狀態：<span id="status">檢查中...</span></p>
 
-window.onload = function() {
-    const status = document.getElementById('status');
-    
-    if (typeof SharedArrayBuffer !== 'undefined') {
-        status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
-        status.style.color = "green";
-    } else {
-        // 如果 SW 已激活但 SAB 仍不可用，嘗試自動重整一次
-        if (window.crossOriginIsolated === false && 'serviceWorker' in navigator) {
-            status.innerHTML = "⏳ 正在激活隔離環境，請稍候...";
-            setTimeout(() => {
-                location.reload();
-            }, 1000);
-        } else {
-            status.innerHTML = "❌ 跨來源隔離未開啟。請嘗試手動重新整理 (Ctrl+F5)。";
-            status.style.color = "red";
-        }
-    }
-};
+    <!-- 2. 將邏輯正確包裹在 script 標籤內 -->
+    <script>
+        window.onload = function() {
+            const status = document.getElementById('status');
+            
+            // 檢查是否已開啟跨來源隔離 (這影響 SharedArrayBuffer 的可用性)
+            if (typeof SharedArrayBuffer !== 'undefined') {
+                status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
+                status.style.color = "green";
+                status.style.backgroundColor = "#eaffea";
+                console.log("Success: SharedArrayBuffer is available.");
+            } else {
+                // 如果環境尚未隔離且支援 SW，嘗試自動重整
+                if (window.crossOriginIsolated === false && 'serviceWorker' in navigator) {
+                    status.innerHTML = "⏳ 正在激活隔離環境，1秒後自動重新整理...";
+                    status.style.color = "#856404";
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    status.innerHTML = "❌ 隔離失敗。請確保使用 HTTPS 並手動重新整理 (Ctrl+F5)。";
+                    status.style.color = "red";
+                    status.style.backgroundColor = "#ffeaea";
+                }
+            }
+        };
+    </script>
 </body>
 </html>
