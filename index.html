@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>照片轉影片工具 - 穩定版</title>
+    <!-- 1. 最優先載入隔離腳本 -->
     <script src="coi-serviceworker.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <!-- FFmpeg 核心 JS -->
+    
+    <!-- 2. 強制鎖定相同版本的 FFmpeg 資源 -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js"></script>
     <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 </head>
@@ -28,8 +30,8 @@
             </div>
         </div>
 
+        <!-- 圖片清單與排序功能 (已在先前版本驗證成功) -->
         <div v-if="images && images.length > 0" class="space-y-2 mb-6 border-t pt-4">
-            <h3 class="font-bold text-xs uppercase text-gray-500 mb-2">已選照片 ({{images.length}}/20)</h3>
             <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-gray-50 p-2 rounded border border-gray-200 shadow-sm">
                 <span class="w-6 font-mono text-gray-400 text-xs text-center">{{index + 1}}</span>
                 <img :src="img.preview" class="w-12 h-12 object-cover rounded mx-3 border shadow-sm bg-white">
@@ -48,11 +50,10 @@
             <button 
                 @click="startProcess" 
                 :disabled="isProcessing || images.length < 5"
-                class="w-full py-4 rounded-lg font-bold text-white transition shadow-lg text-lg flex items-center justify-center"
+                class="w-full py-4 rounded-lg font-bold text-white transition shadow-lg text-lg"
                 :class="isProcessing ? 'bg-gray-400 animate-pulse' : (images.length < 5 ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700')"
             >
-                <span v-if="isProcessing" class="mr-2">🎬</span>
-                {{ isProcessing ? `正在合成影片... ${progress}%` : (images.length < 5 ? '請至少選取 5 張照片' : '🚀 開始合成影片') }}
+                {{ isProcessing ? `🎬 正在合成影片... ${progress}%` : (images.length < 5 ? '請至少選取 5 張照片' : '🚀 開始合成影片') }}
             </button>
         </div>
 
@@ -62,103 +63,98 @@
     </div>
 
     <script>
-  const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref } = Vue;
 
-createApp({
-    setup() {
-        const images = ref([]);
-        const musicFile = ref(null);
-        const isProcessing = ref(false);
-        const progress = ref(0);
+        createApp({
+            setup() {
+                const images = ref([]);
+                const musicFile = ref(null);
+                const isProcessing = ref(false);
+                const progress = ref(0);
 
-        // 新增功能：載入時自動檢查環境
-        onMounted(() => {
-            console.log("正在初始化 FFmpeg 載入檢查...");
-        });
+                const handleImageUpload = (e) => {
+                    const files = Array.from(e.target.files);
+                    files.forEach(file => {
+                        images.value.push({ id: Math.random().toString(36).substring(7), file, preview: URL.createObjectURL(file), duration: 3 });
+                    });
+                    e.target.value = '';
+                };
 
-        // 圖片處理邏輯保持不變...
-        const handleImageUpload = (e) => {
-            const files = Array.from(e.target.files);
-            files.forEach(file => {
-                images.value.push({ id: Math.random().toString(36).substring(7), file, preview: URL.createObjectURL(file), duration: 3 });
-            });
-            e.target.value = '';
-        };
+                const handleMusicUpload = (e) => { musicFile.value = e.target.files[0]; };
+                const move = (i, d) => { const item = images.value.splice(i, 1)[0]; images.value.splice(i + d, 0, item); };
+                const remove = (i) => { URL.revokeObjectURL(images.value[i].preview); images.value.splice(i, 1); };
 
-        const startProcess = async () => {
-            if (isProcessing.value) return;
-            isProcessing.value = true;
-            progress.value = 0;
+                const startProcess = async () => {
+                    if (isProcessing.value) return;
+                    isProcessing.value = true;
+                    progress.value = 0;
 
-            try {
-                // 【核心修正】明確的全域變數路徑尋找
-                // 根據版本 0.12.7，正確位置應為全域的 FFmpegWasm 物件
-                const FFClass = (window.FFmpegWasm && window.FFmpegWasm.FFmpeg) || window.FFmpeg;
-                const Utils = window.FFmpegUtil || (window.FFmpegWasm && window.FFmpegWasm.util);
+                    try {
+                        // 【終極提取邏輯】
+                        const FFClass = (window.FFmpegWasm && window.FFmpegWasm.FFmpeg) || window.FFmpeg;
+                        const Utils = window.FFmpegUtil || (window.FFmpegWasm && window.FFmpegWasm.util);
 
-                if (!FFClass || !Utils) {
-                    throw new Error("FFmpeg 組件載入異常。請嘗試：1. 徹底關閉分頁再開 2. 換成電腦版 Chrome 瀏覽器。");
-                }
+                        if (!FFClass || !Utils) {
+                            throw new Error("FFmpeg 核心組件載入異常。");
+                        }
 
-                const ffmpeg = new FFClass();
-                const { fetchFile, toBlobURL } = Utils;
+                        const ffmpeg = new FFClass();
+                        const { fetchFile, toBlobURL } = Utils;
 
-                ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
+                        ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
 
-                // 核心 WASM 下載
-                await ffmpeg.load({
-                    coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
-                    wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
-                });
+                        // 核心核心核心：載入 WASM
+                        await ffmpeg.load({
+                            coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
+                            wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+                        });
 
-                // 1. 寫入虛擬文件系統 (改用更穩定的檔名)
-                for (let i = 0; i < images.value.length; i++) {
-                    await ffmpeg.writeFile(`pic_${i}.jpg`, await fetchFile(images.value[i].file));
-                }
-                
-                let audioIn = [];
-                if (musicFile.value) {
-                    await ffmpeg.writeFile('audio_bg', await fetchFile(musicFile.value));
-                    audioIn = ['-i', 'audio_bg'];
-                }
+                        // 1. 寫入虛擬文件
+                        for (let i = 0; i < images.value.length; i++) {
+                            await ffmpeg.writeFile(`f${i}.jpg`, await fetchFile(images.value[i].file));
+                        }
+                        
+                        let audioIn = [];
+                        if (musicFile.value) {
+                            await ffmpeg.writeFile('bgm', await fetchFile(musicFile.value));
+                            audioIn = ['-i', 'bgm'];
+                        }
 
-                // 2. 建立 Concat 序列 (精確秒數控制)
-                let listContent = "";
-                images.value.forEach((img, i) => {
-                    listContent += `file 'pic_${i}.jpg'\nduration ${img.duration}\n`;
-                });
-                listContent += `file 'pic_${images.value.length-1}.jpg'`; // 最後一幀補償
-                await ffmpeg.writeFile('input.txt', new TextEncoder().encode(listContent));
+                        // 2. 建立播放序列
+                        let list = "";
+                        images.value.forEach((img, i) => { list += `file 'f${i}.jpg'\nduration ${img.duration}\n`; });
+                        list += `file 'f${images.value.length-1}.jpg'`;
+                        await ffmpeg.writeFile('l.txt', new TextEncoder().encode(list));
 
-                // 3. 執行合成
-                const totalDur = images.value.reduce((a, c) => a + c.duration, 0);
+                        // 3. 執行合成
+                        const totalDur = images.value.reduce((a, c) => a + c.duration, 0);
+                        await ffmpeg.exec([
+                            '-f', 'concat', '-safe', '0', '-i', 'l.txt',
+                            ...audioIn,
+                            '-filter_complex', `[1:a]afade=t=out:st=${Math.max(0, totalDur-3)}:d=3[aout]`,
+                            '-map', '0:v', '-map', '[aout]',
+                            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-shortest', 'out.mp4'
+                        ]);
 
-                await ffmpeg.exec([
-                    '-f', 'concat', '-safe', '0', '-i', 'input.txt',
-                    ...audioIn,
-                    '-filter_complex', `[1:a]afade=t=out:st=${Math.max(0, totalDur-3)}:d=3[aout]`,
-                    '-map', '0:v', '-map', '[aout]',
-                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-shortest', 'final_output.mp4'
-                ]);
+                        // 4. 下載
+                        const data = await ffmpeg.readFile('out.mp4');
+                        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `video_${Date.now()}.mp4`;
+                        a.click();
+                        
+                    } catch (err) {
+                        console.error("FFmpeg Error:", err);
+                        alert("合成失敗：" + err.message + "\n建議使用電腦版 Chrome 並重新整理頁面。");
+                    } finally {
+                        isProcessing.value = false;
+                    }
+                };
 
-                // 4. 下載結果
-                const data = await ffmpeg.readFile('final_output.mp4');
-                const downloadLink = document.createElement('a');
-                downloadLink.href = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-                downloadLink.download = `my_video_${Date.now()}.mp4`;
-                downloadLink.click();
-                
-            } catch (err) {
-                console.error("FFmpeg Runtime Error:", err);
-                alert("合成失敗：" + err.message);
-            } finally {
-                isProcessing.value = false;
+                return { images, musicFile, handleImageUpload, handleMusicUpload, move, remove, startProcess, isProcessing, progress };
             }
-        };
-
-        return { images, musicFile, handleImageUpload, startProcess, isProcessing, progress };
-    }
-}).mount('#app');
+        }).mount('#app');
     </script>
 </body>
 </html>
