@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 照片轉影片測試 - 資訊設計師</title>
+    <!-- 必須在其他所有腳本之前載入 -->
+    <script src="coi-serviceworker.js"></script>
+</head>
+<body>
+    <h1>FFmpeg 環境環境檢查</h1>
+    <div id="status">檢查中...</div>
+
+    <script>
+        window.onload = function() {
+            const status = document.getElementById('status');
+            // 檢查 SharedArrayBuffer 是否可用
+            if (typeof SharedArrayBuffer !== 'undefined') {
+                status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
+                status.style.color = "green";
+                console.log("Success: SharedArrayBuffer is available.");
+            } else {
+                status.innerHTML = "❌ 跨來源隔離未開啟。請檢查 Service Worker 是否運作。";
+                status.style.color = "red";
+                console.warn("Fail: SharedArrayBuffer is undefined.");
+            }
+        };
+    </script>
+</body>
+</html>
