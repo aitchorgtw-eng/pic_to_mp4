@@ -11,20 +11,24 @@
     <h1>FFmpeg 環境環境檢查</h1>
     <div id="status">檢查中...</div>
 
-    <script>
-        window.onload = function() {
-            const status = document.getElementById('status');
-            // 檢查 SharedArrayBuffer 是否可用
-            if (typeof SharedArrayBuffer !== 'undefined') {
-                status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
-                status.style.color = "green";
-                console.log("Success: SharedArrayBuffer is available.");
-            } else {
-                status.innerHTML = "❌ 跨來源隔離未開啟。請檢查 Service Worker 是否運作。";
-                status.style.color = "red";
-                console.warn("Fail: SharedArrayBuffer is undefined.");
-            }
-        };
-    </script>
+window.onload = function() {
+    const status = document.getElementById('status');
+    
+    if (typeof SharedArrayBuffer !== 'undefined') {
+        status.innerHTML = "✅ 跨來源隔離已開啟！SharedArrayBuffer 可用。";
+        status.style.color = "green";
+    } else {
+        // 如果 SW 已激活但 SAB 仍不可用，嘗試自動重整一次
+        if (window.crossOriginIsolated === false && 'serviceWorker' in navigator) {
+            status.innerHTML = "⏳ 正在激活隔離環境，請稍候...";
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            status.innerHTML = "❌ 跨來源隔離未開啟。請嘗試手動重新整理 (Ctrl+F5)。";
+            status.style.color = "red";
+        }
+    }
+};
 </body>
 </html>
