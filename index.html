@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 照片轉影片 - 黃金穩定版</title>
+    <title>AI 照片轉影片 - 專業字幕版</title>
     <script src="coi-serviceworker.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -12,51 +12,73 @@
 <body class="bg-gray-100 p-4 md:p-8">
     <div id="app" class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-lg border border-gray-200">
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-800">📸 照片轉影片工具</h1>
+            <h1 class="text-2xl font-bold text-gray-800">📸 照片轉影片工具 <span class="text-sm text-blue-500 font-normal">v2.0 專業版</span></h1>
             <div class="text-xs px-2 py-1 rounded shadow-sm" :class="envReady ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
                 環境狀態: {{ envReady ? '✅ 已就緒' : '❌ 隔離未啟動' }}
             </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div class="border-2 border-dashed border-blue-300 p-4 rounded bg-blue-50 text-center">
-                <input type="file" multiple accept="image/*" @change="handleImageUpload" class="text-xs w-full cursor-pointer">
+            <div class="border-2 border-dashed border-blue-300 p-4 rounded bg-blue-50 text-center relative hover:bg-blue-100 transition">
+                <label class="block font-bold text-blue-800 mb-1">1. 加入照片 (5-20張)</label>
+                <input type="file" multiple accept="image/*" @change="handleImageUpload" class="text-xs w-full cursor-pointer mt-2">
             </div>
-            <div class="border-2 border-dashed border-green-300 p-4 rounded bg-green-50 text-center">
-                <input type="file" accept="audio/mp3,video/mp4" @change="handleMusicUpload" class="text-xs w-full cursor-pointer">
-            </div>
-        </div>
-
-        <div v-if="images.length > 0" class="space-y-2 mb-6 border-t pt-4">
-             <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-gray-50 p-2 rounded border">
-                <span class="w-6 font-mono text-gray-400 text-xs text-center">{{index + 1}}</span>
-                <img :src="img.preview" class="w-12 h-12 object-cover rounded mx-3">
-                <div class="flex-grow text-xs">
-                    持續 <input type="number" v-model.number="img.duration" min="2" max="5" class="w-10 border rounded mx-1 text-center"> 秒
-                </div>
-                <div class="flex space-x-1">
-                    <button @click="move(index, -1)" :disabled="index === 0" class="p-1 border rounded bg-white disabled:opacity-30">↑</button>
-                    <button @click="move(index, 1)" :disabled="index === images.length - 1" class="p-1 border rounded bg-white disabled:opacity-30">↓</button>
-                    <button @click="remove(index)" class="p-1 text-red-500 font-bold">✕</button>
-                </div>
+            <div class="border-2 border-dashed border-green-300 p-4 rounded bg-green-50 text-center relative hover:bg-green-100 transition">
+                <label class="block font-bold text-green-800 mb-1">2. 加入背景音樂 (選填)</label>
+                <input type="file" accept="audio/mp3,video/mp4" @change="handleMusicUpload" class="text-xs w-full cursor-pointer mt-2">
             </div>
         </div>
 
-        <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 text-red-700 rounded border border-red-200 text-sm">
+        <div v-if="images.length > 0" class="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg mb-6 flex flex-col md:flex-row justify-between items-center shadow-inner border">
+            <div class="font-bold text-gray-700 mb-3 md:mb-0 text-lg">
+                ⏱️ 影片總長度: <span class="text-blue-600 text-2xl mx-1">{{ totalDuration }}</span> 秒
+            </div>
+            <div class="flex items-center space-x-2 bg-white p-2 rounded shadow-sm border">
+                <span class="text-sm text-gray-600 font-bold">批次修改秒數:</span>
+                <input type="number" v-model.number="globalDurationInput" min="2" max="10" class="w-16 border rounded p-1 text-center text-sm focus:ring-2 outline-none">
+                <button @click="applyGlobalDuration" class="bg-gray-800 text-white px-3 py-1 rounded text-sm hover:bg-black transition">套用全部</button>
+            </div>
+        </div>
+
+        <div v-if="images.length > 0" class="space-y-3 mb-6 border-t pt-4">
+             <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition">
+                <div class="flex flex-col items-center mr-3">
+                    <span class="w-6 font-bold text-gray-400 text-xs text-center mb-1">#{{index + 1}}</span>
+                    <img :src="img.preview" class="w-16 h-16 object-cover rounded border">
+                </div>
+                
+                <div class="flex-grow flex flex-col space-y-2">
+                    <div class="flex items-center text-sm font-medium text-gray-700">
+                        停留 <input type="number" v-model.number="img.duration" min="2" max="10" class="w-16 border rounded mx-2 text-center py-1 focus:ring-2 outline-none"> 秒
+                    </div>
+                    <input type="text" v-model="img.text" maxlength="20" placeholder="輸入圖片說明文字 (最多20字，將顯示於影片下方)" class="border rounded px-3 py-1.5 w-full text-sm bg-gray-50 focus:bg-white focus:ring-2 outline-none">
+                </div>
+
+                <div class="flex flex-col space-y-1 ml-3">
+                    <div class="flex space-x-1">
+                        <button @click="move(index, -1)" :disabled="index === 0" class="p-1 border rounded bg-gray-50 disabled:opacity-30 hover:bg-gray-200">⬆️</button>
+                        <button @click="move(index, 1)" :disabled="index === images.length - 1" class="p-1 border rounded bg-gray-50 disabled:opacity-30 hover:bg-gray-200">⬇️</button>
+                    </div>
+                    <button @click="remove(index)" class="p-1 border rounded bg-red-50 text-red-500 hover:bg-red-100 text-xs font-bold">刪除</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 text-red-700 rounded border border-red-200 text-sm font-bold">
             {{ errorMessage }}
         </div>
 
         <button 
             @click="startProcess" 
             :disabled="isProcessing || images.length < 5"
-            class="w-full py-4 rounded-lg font-bold text-white shadow-lg transition text-lg"
-            :class="isProcessing ? 'bg-gray-400' : (images.length < 5 ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700')"
+            class="w-full py-4 rounded-lg font-bold text-white shadow-lg transition text-lg tracking-wide"
+            :class="isProcessing ? 'bg-gray-400 animate-pulse' : (images.length < 5 ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700')"
         >
             {{ buttonText }}
         </button>
 
-        <div v-if="isProcessing && progress > 0" class="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-            <div class="bg-blue-600 h-full transition-all duration-300" :style="{ width: progress + '%' }"></div>
+        <div v-if="isProcessing && progress > 0" class="mt-4 w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner relative">
+            <div class="bg-blue-500 h-full transition-all duration-300 flex items-center justify-end pr-2 text-xs text-white font-bold" :style="{ width: progress + '%' }">{{ progress }}%</div>
         </div>
     </div>
 
@@ -72,12 +94,34 @@
                 const loadingStage = ref(''); 
                 const errorMessage = ref('');
                 const envReady = ref(typeof SharedArrayBuffer !== 'undefined');
+                const globalDurationInput = ref(7); // 預設批次秒數為 7
+
+                // 計算總長度
+                const totalDuration = computed(() => {
+                    return images.value.reduce((total, img) => total + (img.duration || 0), 0);
+                });
+
+                // 批次套用秒數
+                const applyGlobalDuration = () => {
+                    const sec = parseInt(globalDurationInput.value);
+                    if (sec >= 2 && sec <= 10) {
+                        images.value.forEach(img => img.duration = sec);
+                    } else {
+                        alert("請輸入 2 到 10 之間的秒數");
+                    }
+                };
 
                 const handleImageUpload = (e) => {
                     errorMessage.value = '';
                     const files = Array.from(e.target.files);
                     files.forEach(file => {
-                        images.value.push({ id: Math.random(), file, preview: URL.createObjectURL(file), duration: 3 });
+                        images.value.push({ 
+                            id: Math.random().toString(36).substring(7), 
+                            file: file, 
+                            preview: URL.createObjectURL(file), 
+                            duration: 3,
+                            text: '' // 新增文字屬性
+                        });
                     });
                     e.target.value = '';
                 };
@@ -88,15 +132,61 @@
 
                 const buttonText = computed(() => {
                     if (images.value.length < 5) return '請至少選取 5 張照片';
-                    if (!isProcessing.value) return '🚀 開始合成影片';
-                    if (loadingStage.value === 'downloading') return '⏳ 正在下載核心引擎 (首次約需 1-3 分鐘)...';
-                    if (loadingStage.value === 'encoding') return `🎬 影片合成中... ${progress.value}%`;
+                    if (!isProcessing.value) return '🚀 輸出影片檔案';
+                    if (loadingStage.value === 'downloading') return '⏳ 正在初始化引擎 (首次約需 1-2 分鐘)...';
+                    if (loadingStage.value === 'encoding') return `🎬 影片合成中... 請勿關閉視窗`;
                     return '處理中...';
                 });
 
+                // 【關鍵技術】利用 Canvas 預先處理照片與文字，繞過 FFmpeg 處理字型的困難
+                const processImageWithText = (file, text) => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const cvs = document.createElement('canvas');
+                            cvs.width = 1280;
+                            cvs.height = 720;
+                            const ctx = cvs.getContext('2d');
+                            
+                            // 填滿黑底
+                            ctx.fillStyle = 'black';
+                            ctx.fillRect(0, 0, 1280, 720);
+                            
+                            // 計算等比例縮放與置中
+                            const scale = Math.min(1280 / img.width, 720 / img.height);
+                            const w = img.width * scale;
+                            const h = img.height * scale;
+                            const x = (1280 - w) / 2;
+                            const y = (720 - h) / 2;
+                            ctx.drawImage(img, x, y, w, h);
+                            
+                            // 繪製文字 (如果有輸入)
+                            if (text && text.trim() !== '') {
+                                // 畫一個半透明黑底條讓文字更清晰
+                                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                                ctx.fillRect(0, 720 - 70, 1280, 70);
+                                
+                                // 寫上白字
+                                ctx.fillStyle = 'white';
+                                ctx.font = 'bold 36px "微軟正黑體", "PingFang TC", sans-serif';
+                                ctx.textAlign = 'center';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText(text, 640, 720 - 35);
+                            }
+                            
+                            // 轉換為 JPEG 緩衝區交給 FFmpeg
+                            cvs.toBlob(async (blob) => {
+                                const buffer = new Uint8Array(await blob.arrayBuffer());
+                                resolve(buffer);
+                            }, 'image/jpeg', 0.9);
+                        };
+                        img.src = URL.createObjectURL(file);
+                    });
+                };
+
                 const startProcess = async () => {
                     if (!envReady.value) {
-                        errorMessage.value = "隔離環境未就緒，無法進行合成。請確保使用電腦版瀏覽器並重整頁面。";
+                        errorMessage.value = "環境未就緒，請重新整理頁面。";
                         return;
                     }
                     
@@ -105,15 +195,12 @@
                     progress.value = 0;
 
                     try {
-                        // 1. 呼叫 v0.11.6 穩定版引擎
                         const { createFFmpeg, fetchFile } = FFmpeg;
                         const ffmpeg = createFFmpeg({
                             log: true,
                             corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
                             progress: ({ ratio }) => {
-                                if (ratio >= 0 && ratio <= 1) {
-                                    progress.value = Math.round(ratio * 100);
-                                }
+                                if (ratio >= 0 && ratio <= 1) progress.value = Math.round(ratio * 100);
                             }
                         });
 
@@ -122,47 +209,41 @@
 
                         loadingStage.value = 'encoding';
                         
-                        // 2. 寫入圖片
+                        // 1. 利用 Canvas 寫入處理好的圖片 (已包含文字與標準 720p 尺寸)
                         for (let i = 0; i < images.value.length; i++) {
-                            ffmpeg.FS('writeFile', `f${i}.jpg`, await fetchFile(images.value[i].file));
+                            const processedBuffer = await processImageWithText(images.value[i].file, images.value[i].text);
+                            ffmpeg.FS('writeFile', `f${i}.jpg`, processedBuffer);
                         }
                         
-                        // 3. 智慧處理音軌 (防止未上傳音樂導致崩潰)
-                        const total = images.value.reduce((a, c) => a + c.duration, 0);
-                        let audioIn = [];
-                        let filterComplex = "";
-                        let mapArgs = [];
-
+                        // 2. 處理音軌
+                        let audioArgs = [];
                         if (musicFile.value) {
                             ffmpeg.FS('writeFile', 'bgm', await fetchFile(musicFile.value));
-                            audioIn = ['-i', 'bgm'];
-                            filterComplex = `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p[v];[1:a]afade=t=out:st=${Math.max(0, total-3)}:d=3[aout]`;
-                            mapArgs = ['-map', '[v]', '-map', '[aout]'];
-                        } else {
-                            filterComplex = `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p[v]`;
-                            mapArgs = ['-map', '[v]'];
+                            // 音樂加入淡出濾鏡
+                            audioArgs = [
+                                '-i', 'bgm', 
+                                '-filter_complex', `[1:a]afade=t=out:st=${Math.max(0, totalDuration.value-3)}:d=3[aout]`, 
+                                '-map', '0:v', '-map', '[aout]'
+                            ];
                         }
 
-                        // 4. 生成清單
+                        // 3. 生成時間清單
                         let list = images.value.map((img, i) => `file 'f${i}.jpg'\nduration ${img.duration}`).join('\n');
                         list += `\nfile 'f${images.value.length-1}.jpg'`;
                         ffmpeg.FS('writeFile', 'l.txt', new TextEncoder().encode(list));
 
-                        // 5. 執行合成 (v0.11.6 使用展開語法)
-                     // 5. 執行合成 (加入 -t 強制指定總秒數，捨棄不可靠的 -shortest)
+                        // 4. 極簡化合成指令 (因為圖片已經是標準尺寸了，省去複雜運算)
                         const args = [
                             '-f', 'concat', '-safe', '0', '-i', 'l.txt',
-                            ...audioIn,
-                            '-filter_complex', filterComplex,
-                            ...mapArgs,
-                            '-c:v', 'libx264', '-preset', 'ultrafast', 
-                            '-t', String(total), // 【關鍵修復】強制在精準的總秒數結束
+                            ...audioArgs,
+                            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+                            '-t', String(totalDuration.value), // 強制精準裁切秒數
                             'out.mp4'
                         ];
                         
                         await ffmpeg.run(...args);
 
-                        // 6. 完成與下載
+                        // 5. 下載
                         const data = ffmpeg.FS('readFile', 'out.mp4');
                         const link = document.createElement('a');
                         link.href = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
@@ -170,14 +251,18 @@
                         link.click();
 
                     } catch (err) {
-                        errorMessage.value = "合成過程發生錯誤：" + err.message;
+                        errorMessage.value = "發生錯誤：" + err.message;
                         console.error(err);
                     } finally {
                         isProcessing.value = false;
                         loadingStage.value = '';
                     }
                 };
-                return { images, handleImageUpload, handleMusicUpload, move, remove, startProcess, isProcessing, progress, envReady, buttonText, errorMessage };
+                return { 
+                    images, musicFile, handleImageUpload, handleMusicUpload, move, remove, 
+                    startProcess, isProcessing, progress, envReady, buttonText, errorMessage,
+                    totalDuration, globalDurationInput, applyGlobalDuration
+                };
             }
         }).mount('#app');
     </script>
