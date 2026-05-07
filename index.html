@@ -149,12 +149,15 @@
                         ffmpeg.FS('writeFile', 'l.txt', new TextEncoder().encode(list));
 
                         // 5. 執行合成 (v0.11.6 使用展開語法)
+                     // 5. 執行合成 (加入 -t 強制指定總秒數，捨棄不可靠的 -shortest)
                         const args = [
                             '-f', 'concat', '-safe', '0', '-i', 'l.txt',
                             ...audioIn,
                             '-filter_complex', filterComplex,
                             ...mapArgs,
-                            '-c:v', 'libx264', '-preset', 'ultrafast', '-shortest', 'out.mp4'
+                            '-c:v', 'libx264', '-preset', 'ultrafast', 
+                            '-t', String(total), // 【關鍵修復】強制在精準的總秒數結束
+                            'out.mp4'
                         ];
                         
                         await ffmpeg.run(...args);
