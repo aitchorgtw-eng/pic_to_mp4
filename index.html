@@ -3,26 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 照片轉影片 - 穩定修復版</title>
+    <title>AI 照片轉影片 - 終極突破版</title>
     <script src="coi-serviceworker.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     
-    <!-- 換用 jsDelivr 提供更穩定的 WASM 載入路徑 -->
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js" crossorigin="anonymous"></script>
+    
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-100 p-4 md:p-8">
     <div id="app" class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-lg border border-gray-200">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-2xl font-bold text-gray-800">📸 照片轉影片工具</h1>
-            <!-- 環境偵測燈 -->
             <div class="text-xs px-2 py-1 rounded shadow-sm" :class="envReady ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
                 環境狀態: {{ envReady ? '✅ 已就緒' : '❌ 隔離未啟動' }}
             </div>
         </div>
 
-        <!-- 1. 上傳區域 -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div class="border-2 border-dashed border-blue-300 p-4 rounded bg-blue-50 text-center">
                 <input type="file" multiple accept="image/*" @change="handleImageUpload" class="text-xs w-full cursor-pointer">
@@ -32,7 +30,6 @@
             </div>
         </div>
 
-        <!-- 2. 圖片清單 (略，保持原有 UI 邏輯) -->
         <div v-if="images.length > 0" class="space-y-2 mb-6 border-t pt-4">
              <div v-for="(img, index) in images" :key="img.id" class="flex items-center bg-gray-50 p-2 rounded border">
                 <img :src="img.preview" class="w-12 h-12 object-cover rounded mx-3">
@@ -47,7 +44,6 @@
             </div>
         </div>
 
-        <!-- 3. 合成按鈕 -->
         <button 
             @click="startProcess" 
             :disabled="isProcessing || images.length < 5"
@@ -59,7 +55,7 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref } = Vue;
 
         createApp({
             setup() {
@@ -88,19 +84,24 @@
                     progress.value = 0;
 
                     try {
-                        // 強制從正確命名空間提取物件
-                        const FF = window.FFmpegWasm?.FFmpeg || window.FFmpeg?.FFmpeg;
-                        const UT = window.FFmpegUtil;
+                        // 【終極地毯式防禦提取】
+                        let FF = null;
+                        if (window.FFmpegWasm && window.FFmpegWasm.FFmpeg) FF = window.FFmpegWasm.FFmpeg;
+                        else if (window.FFmpeg && window.FFmpeg.FFmpeg) FF = window.FFmpeg.FFmpeg;
+                        else if (typeof FFmpeg !== 'undefined') FF = FFmpeg;
 
-                        if (!FF) throw new Error("組件庫遺失");
+                        let UT = window.FFmpegUtil || (window.FFmpegWasm && window.FFmpegWasm.util);
+
+                        if (!FF || !UT) throw new Error("瀏覽器 CORS 安全性封鎖了外部資源，請確認腳本標籤已加入 crossorigin='anonymous'");
+                        
                         const ffmpeg = new FF();
 
                         ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
 
-                        // 修正 WASM 載入 URL，避免 unpkg 可能的連線問題
+                        // 載入核心 WASM
                         await ffmpeg.load({
-                            coreURL: await UT.toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
-                            wasmURL: await UT.toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+                            coreURL: await UT.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
+                            wasmURL: await UT.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
                         });
 
                         // 寫入圖片序列
@@ -121,11 +122,11 @@
 
                         const total = images.value.reduce((a, c) => a + c.duration, 0);
 
-                        // 合成指令：加入強制畫面比率與縮放，避免因照片大小不一崩潰
+                        // 合成指令
                         await ffmpeg.exec([
                             '-f', 'concat', '-safe', '0', '-i', 'l.txt',
                             ...audioIn,
-                            '-filter_complex', `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p[v];[1:a]afade=t=out:st=${total-3}:d=3[aout]`,
+                            '-filter_complex', `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p[v];[1:a]afade=t=out:st=${Math.max(0, total-3)}:d=3[aout]`,
                             '-map', '[v]', '-map', '[aout]',
                             '-c:v', 'libx264', '-preset', 'ultrafast', '-shortest', 'out.mp4'
                         ]);
