@@ -1,5 +1,7 @@
 /*! coi-serviceworker v0.1.7 - Guido Zuidhof, licensed under MIT */
-let coepCredentialless = false;
+// 【關鍵修改】：開啟免信任模式，允許外部腳本載入
+let coepCredentialless = true; 
+
 if (typeof window === 'undefined') {
     self.addEventListener("install", () => self.skipWaiting());
     self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
@@ -17,6 +19,7 @@ if (typeof window === 'undefined') {
                     }
 
                     const newHeaders = new Headers(response.headers);
+                    // 這裡會套用 credentialless，放行外部資源
                     newHeaders.set("Cross-Origin-Embedder-Policy", coepCredentialless ? "credentialless" : "require-corp");
                     newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
 
@@ -31,7 +34,6 @@ if (typeof window === 'undefined') {
     });
 } else {
     (() => {
-        // 自動註冊邏輯
         const scriptEl = document.currentScript;
         if (!scriptEl) return;
         const currentScriptUrl = scriptEl.src;
@@ -39,10 +41,8 @@ if (typeof window === 'undefined') {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register(currentScriptUrl).then((registration) => {
                 registration.addEventListener('updatefound', () => {
-                    // 若發現新的 Worker，自動重新整理頁面以套用隔離環境
                     console.log("正在套用跨來源隔離環境...");
                 });
-                // 如果 Worker 已經啟用，但頁面還沒被接管，強制重載
                 if (registration.active && !navigator.serviceWorker.controller) {
                     window.location.reload();
                 }

@@ -6,11 +6,11 @@
     <title>AI 照片轉影片 - 終極突破版</title>
     <script src="coi-serviceworker.js"></script>
     
-    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 </head>
 <body class="bg-gray-100 p-4 md:p-8">
     <div id="app" class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-lg border border-gray-200">
@@ -84,27 +84,21 @@
                     progress.value = 0;
 
                     try {
-                        // 【終極地毯式防禦提取】
-                        let FF = null;
-                        if (window.FFmpegWasm && window.FFmpegWasm.FFmpeg) FF = window.FFmpegWasm.FFmpeg;
-                        else if (window.FFmpeg && window.FFmpeg.FFmpeg) FF = window.FFmpeg.FFmpeg;
-                        else if (typeof FFmpeg !== 'undefined') FF = FFmpeg;
+                        const FF = window.FFmpegWasm?.FFmpeg || window.FFmpeg?.FFmpeg || window.ffmpeg?.FFmpeg;
+                        const UT = window.FFmpegUtil || window.FFmpegWasm?.util;
 
-                        let UT = window.FFmpegUtil || (window.FFmpegWasm && window.FFmpegWasm.util);
-
-                        if (!FF || !UT) throw new Error("瀏覽器 CORS 安全性封鎖了外部資源，請確認腳本標籤已加入 crossorigin='anonymous'");
+                        if (!FF || !UT) throw new Error("腳本未就緒，請等待 3 秒後再試，或使用 Ctrl+F5 重新整理。");
                         
                         const ffmpeg = new FF();
-
                         ffmpeg.on('progress', ({ progress: p }) => { progress.value = Math.round(p * 100); });
 
                         // 載入核心 WASM
                         await ffmpeg.load({
-                            coreURL: await UT.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
-                            wasmURL: await UT.toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+                            coreURL: await UT.toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js', 'text/javascript'),
+                            wasmURL: await UT.toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
                         });
 
-                        // 寫入圖片序列
+                        // 寫入圖片
                         for (let i = 0; i < images.value.length; i++) {
                             await ffmpeg.writeFile(`f${i}.jpg`, await UT.fetchFile(images.value[i].file));
                         }
@@ -122,7 +116,7 @@
 
                         const total = images.value.reduce((a, c) => a + c.duration, 0);
 
-                        // 合成指令
+                        // 執行合成
                         await ffmpeg.exec([
                             '-f', 'concat', '-safe', '0', '-i', 'l.txt',
                             ...audioIn,
@@ -138,7 +132,7 @@
                         link.click();
 
                     } catch (err) {
-                        alert("系統極限或錯誤：" + err.message);
+                        alert("系統錯誤：" + err.message);
                     } finally {
                         isProcessing.value = false;
                     }
